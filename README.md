@@ -1,7 +1,7 @@
-#PCAP parser
+# PCAP parser
 Tiny pure Nim library to read PCAP files used by TcpDump/WinDump/Wireshark as described here: https://wiki.wireshark.org/Development/LibpcapFileFormat
 
-##Code example
+## Code example
 ```
 import pcap
 
