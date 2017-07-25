@@ -10,11 +10,27 @@ proc read[T](s: Stream, result: var T) =
   if readData(s, addr(result), sizeof(T)) != sizeof(T):
     raise newEIO("Cannot read from stream")
 
+proc readUint8(s: Stream): uint8 =
+  read(s, result)
+
 proc readUint16(s: Stream): uint16 =
   read(s, result)
 
 proc readUint32(s: Stream): uint32 =
   read(s, result)
+
+proc writeUint8(s: Stream, d: uint8) =
+  write(s, d)
+
+proc writeUint16(s: Stream, d: uint16) =
+  write(s, d)
+
+proc writeUint32(s: Stream, d: uint32) =
+  write(s, d)
+
+proc writeInt32(s: Stream, d: int32) =
+  write(s, d)
+
 
 type
   LinkLayerType* = enum
@@ -126,6 +142,7 @@ type
     RDS = (265, "RDS"),
     USB_DARWIN = (266, "USB_DARWIN"),
     SDLC = (268, "SDLC")
+
   PcapGlobalHeader* = ref object
     ## This header starts the libpcap file and will be followed by the first packet header
     magicNumber*: uint32
@@ -137,6 +154,7 @@ type
     sigfigs*: uint32
     snaplen*: uint32
     network*: LinkLayerType
+
   PcapRecordHeader* = ref object
     ## Each captured packet starts with this header
     globalHeader*: PcapGlobalHeader
@@ -144,10 +162,11 @@ type
     tsUsec*: uint32
     inclLen*: uint32
     origLen*: uint32
+
   PcapRecord* = ref object
     ## A record which contains a pointer to the header and a sequence of data characters.
     header*: PcapRecordHeader
-    data*: seq[char]
+    data*: seq[uint8]
 
 proc `$`*(header: PcapGlobalHeader): string =
   ## Procedure to get the header as a nicely formatted string
@@ -191,8 +210,8 @@ proc dataString*(record: PcapRecord): string =
   result = ""
   var i = 0
   for c in record.data:
-    if c in Printables:
-      result.add c
+    if c.chr in Printables:
+      result.add c.chr
     else:
       result.add "."
     i+=1
@@ -241,6 +260,45 @@ proc readGlobalHeader*(s: Stream): PcapGlobalHeader =
     bigEndian32(network.addr, network.addr)
   result.network = LinkLayerType(network)
 
+proc writeGlobalHeader*(s: Stream, globalHeader: PcapGlobalHeader) =
+  if globalHeader.nanos:
+    s.writeUint32(0xA1B23C4D'u32)
+  else:
+    s.writeUint32(0xA1B2C3D4'u32)
+  s.writeUint16(globalHeader.versionMajor)
+  s.writeUint16(globalHeader.versionMinor)
+  s.writeInt32(globalHeader.thiszone)
+  s.writeUint32(globalHeader.sigfigs)
+  s.writeUint32(globalHeader.snaplen)
+  s.writeUint32(globalHeader.network.ord)
+
+proc writeRecordHeader*(s: Stream, recordHeader: PcapRecordHeader, maxlen: int = 0) =
+  s.writeUint32(recordHeader.tsSec)
+  s.writeUint32(recordHeader.tsUsec)
+  if maxlen == 0:
+    s.writeUint32(recordHeader.inclLen)
+  else:
+    s.writeUint32(maxlen.uint32)
+  s.writeUint32(recordHeader.origLen)
+
+proc writeRecordHeader*(s: Stream, record: PcapRecord, maxlen: int = 0) =
+  s.writeRecordHeader(record.header, maxlen)
+
+proc writeRecordData*(s: Stream, record: seq[uint8], maxlen: int = 0) =
+  if maxlen != 0 and maxlen < record.len:
+    for b in record[0..<maxlen]:
+      s.write(b)
+  else:
+    for b in record:
+      s.write(b)
+
+proc writeRecordData*(s: Stream, record: PcapRecord, maxlen: int = 0) =
+  s.writeRecordData(record.data, maxlen)
+
+proc writeRecord*(s: Stream, record: PcapRecord, maxlen: int = 0) =
+  s.writeRecordHeader(record, maxlen)
+  s.writeRecordData(record, maxlen)
+
 proc readRecordHeader*(s: Stream, globalHeader: PcapGlobalHeader): PcapRecordHeader =
   ## Reads a record header and advanced the pointer to the record data
   new result
@@ -262,10 +320,10 @@ proc readRecord*(s: Stream, recordHeader: PcapRecordHeader): PcapRecord =
   result.data.newSeq(recordHeader.inclLen)
   if not recordHeader.globalHeader.swapped:
     for i in countdown(recordHeader.inclLen.int-1, 0):
-      result.data[i] = s.readChar()
+      result.data[i] = s.readUint8()
   else:
     for i in 0..<recordHeader.inclLen.int:
-      result.data[i] = s.readChar()
+      result.data[i] = s.readUint8()
 
 proc readRecord*(s: Stream, globalHeader: PcapGlobalHeader): PcapRecord =
   ## Reads the record header and the record data given the global header and advances the pointer to the next record header
