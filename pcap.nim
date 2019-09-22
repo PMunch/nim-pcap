@@ -198,7 +198,7 @@ proc `$`*(header: PcapRecordHeader): string =
   Captured size: $5
   Actual size: $6""" % [
     $header.tsSec,
-    $(fromSeconds(header.tsSec.int64)),
+    $(fromUnix(header.tsSec.int)),
     if header.globalHeader.nanos: "ns" else: "µs",
     $header.tsUsec,
     $header.inclLen,
@@ -270,7 +270,7 @@ proc writeGlobalHeader*(s: Stream, globalHeader: PcapGlobalHeader) =
   s.writeInt32(globalHeader.thiszone)
   s.writeUint32(globalHeader.sigfigs)
   s.writeUint32(globalHeader.snaplen)
-  s.writeUint32(globalHeader.network.ord)
+  s.writeUint32(globalHeader.network.ord.uint32)
 
 proc writeRecordHeader*(s: Stream, recordHeader: PcapRecordHeader, maxlen: int = 0) =
   s.writeUint32(recordHeader.tsSec)
